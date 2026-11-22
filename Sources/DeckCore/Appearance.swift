@@ -157,6 +157,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var appTheme: AppTheme = .system
     public private(set) var defaults: TerminalAppearance = .standard
     public private(set) var overrides: [String: AppearanceOverride] = [:]
+    public var sidebar = SidebarStyle()
 
     public init() {}
 
@@ -165,6 +166,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         appTheme = (try? container.decodeIfPresent(AppTheme.self, forKey: .appTheme)) ?? .system
         defaults = (try? container.decodeIfPresent(TerminalAppearance.self, forKey: .defaults)) ?? .standard
         overrides = (try? container.decodeIfPresent([String: AppearanceOverride].self, forKey: .overrides)) ?? [:]
+        sidebar = (try? container.decodeIfPresent(SidebarStyle.self, forKey: .sidebar)) ?? SidebarStyle()
     }
 
     public func resolved(for sessionId: String?) -> TerminalAppearance {

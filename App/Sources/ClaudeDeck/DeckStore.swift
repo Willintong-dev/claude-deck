@@ -11,7 +11,9 @@ final class DeckStore {
     private(set) var sessions: [String: SessionState] = [:]
     private(set) var ownedSessionIds: Set<String> = []
     private(set) var pendingLaunches: [String: PendingLaunch] = [:]
-    var selection: SidebarItem.ID?
+    var selection: SidebarItem.ID? {
+        didSet { markViewedSessionSeen() }
+    }
     var showingNewSession = false
     var subagentDraft = ""
     var takeoverCandidate: SessionState?
@@ -35,6 +37,7 @@ final class DeckStore {
         didSet { UserDefaults.standard.set(appearanceScope.rawValue, forKey: "appearanceScope") }
     }
     private(set) var notifications: NotificationSettings
+    private(set) var readState: ReadState
     var notificationEditingKind: NotificationKind = .permission
     var namePrompt: NamePrompt?
     var deletionCandidate: SessionState?
@@ -44,6 +47,7 @@ final class DeckStore {
     @ObservationIgnored private let catalogStore = SessionCatalogStore.standard
     @ObservationIgnored private let appearanceStore = AppearanceStore.standard
     @ObservationIgnored private let notificationStore = NotificationStore.standard
+    @ObservationIgnored private let readStore = ReadStateStore.standard
     @ObservationIgnored private var detector = NotificationDetector()
     @ObservationIgnored private var closingHandled: Set<String> = []
     @ObservationIgnored private var closingQueue: [ClosingRequest] = []
@@ -57,6 +61,7 @@ final class DeckStore {
         catalog = catalogStore.load()
         appearance = appearanceStore.load()
         notifications = notificationStore.load()
+        readState = readStore.load()
         tmux = Tmux.locate().map {
             Tmux(executable: $0, configFile: DeckPaths.standard.deckDirectory.appendingPathComponent("tmux.conf"))
         }
@@ -74,6 +79,11 @@ final class DeckStore {
         }
         applyAppTheme()
         DeckNotifier.shared.onOpen = { [weak self] id in self?.reveal(id) }
+        for name in [NSApplication.didBecomeActiveNotification, NSWindow.didBecomeKeyNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.markViewedSessionSeen() }
+            }
+        }
         TerminalHost.shared.onDetached = { [weak self] _ in
             self?.engine?.refreshOwnedSessions()
         }
@@ -101,6 +111,7 @@ final class DeckStore {
             }
         }
         advanceContextRelief(using: snapshot)
+        markViewedSessionSeen()
         announce(detector.triggers(in: snapshot.sessions) { self.title(of: $0) })
         for (id, requestedAt) in finalizing {
             guard let live = snapshot.sessions[id]?.live else { continue }
@@ -140,6 +151,41 @@ final class DeckStore {
         guard sessions[sessionId] != nil else { return }
         selection = .session(sessionId)
         MainWindow.shared.show()
+    }
+
+    func attention(of session: SessionState) -> SessionAttention {
+        readState.attention(for: session)
+    }
+
+    var unreadCount: Int {
+        readState.unreadCount(in: Array(sessions.values))
+    }
+
+    func markUnread(_ sessionId: String) {
+        updateReadState { $0.markUnread(sessionId) }
+    }
+
+    private func markViewedSessionSeen() {
+        guard NSApp?.isActive == true, MainWindow.shared.isKey else { return }
+        let id: String
+        switch selection {
+        case let .session(selected)?: id = selected
+        case let .subagent(parent, _)?: id = parent
+        default: return
+        }
+        guard let session = sessions[id] else { return }
+        var updated = readState
+        guard updated.markSeen(session, at: Date()) else { return }
+        readState = updated
+        try? readStore.save(updated)
+    }
+
+    private func updateReadState(_ change: (inout ReadState) -> Void) {
+        var updated = readState
+        change(&updated)
+        guard updated != readState else { return }
+        readState = updated
+        try? readStore.save(updated)
     }
 
     func updateNotifications(_ change: (inout NotificationSettings) -> Void) {
@@ -270,6 +316,12 @@ final class DeckStore {
         set { updateAppearanceSettings { $0.appTheme = newValue } }
     }
 
+    var sidebarStyle: SidebarStyle { appearance.sidebar }
+
+    func updateSidebar(_ change: (inout SidebarStyle) -> Void) {
+        updateAppearanceSettings { change(&$0.sidebar) }
+    }
+
     private func updateAppearanceSettings(_ change: (inout AppearanceSettings) -> Void) {
         var updated = appearance
         change(&updated)
@@ -330,6 +382,7 @@ final class DeckStore {
                 let date = Date()
                 self.updateCatalog { $0.markDeleted(id, at: date) }
                 self.updateAppearanceSettings { $0.reset(id) }
+                self.updateReadState { $0.forget(id) }
                 self.engine?.forget(id, at: date)
                 if case let .failure(error) = result {
                     self.notice = "No pude borrar todos los archivos de la sesión: \(error.localizedDescription)"

@@ -300,6 +300,8 @@ struct DeckSettingsView: View {
         TabView {
             AppearanceSettingsView(store: store)
                 .tabItem { Label("Apariencia", systemImage: "paintpalette") }
+            SidebarSettingsView(store: store)
+                .tabItem { Label("Lista", systemImage: "sidebar.left") }
             NotificationSettingsView(store: store)
                 .tabItem { Label("Notificaciones", systemImage: "bell") }
         }

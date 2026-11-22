@@ -16,7 +16,7 @@ struct MainView: View {
                     if !store.savedBrains.isEmpty {
                         Section("Cerebros") {
                             ForEach(store.savedBrains) { brain in
-                                SavedBrainRow(brain: brain, now: context.date)
+                                SavedBrainRow(brain: brain, now: context.date, style: store.sidebarStyle)
                                     .tag(SidebarItem.ID.brain(brain.slug))
                                     .contextMenu {
                                         Button("Nueva sesión con este cerebro") { store.startSession(with: brain.slug) }
@@ -27,6 +27,7 @@ struct MainView: View {
                     section("Recientes · 7 días", sessions: store.recentSessions, now: context.date)
                 }
                 .listStyle(.sidebar)
+                .sidebarStyle(store.sidebarStyle)
             }
             .navigationSplitViewColumnWidth(min: 300, ideal: 380)
             .toolbar {
@@ -133,7 +134,7 @@ struct MainView: View {
         switch item.id {
         case let .session(id):
             if let session = store.session(withId: id) {
-                SessionRow(session: session, title: store.title(of: session), owned: store.isOwned(id), now: now)
+                SessionRow(session: session, title: store.title(of: session), owned: store.isOwned(id), now: now, style: store.sidebarStyle, attention: store.attention(of: session))
                     .contextMenu {
                         Button("Renombrar…") { store.requestRename(session) }
                         Menu("Mover a grupo") {
@@ -156,6 +157,9 @@ struct MainView: View {
                         } else if session.summary.cwd != nil {
                             Button("Reanudar aquí") { store.resume(session) }
                         }
+                        if store.attention(of: session) == .seen {
+                            Button("Marcar como no vista") { store.markUnread(id) }
+                        }
                         Button("Copiar id de sesión") {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(id, forType: .string)
@@ -167,7 +171,7 @@ struct MainView: View {
             }
         case let .subagent(sessionId, agentId):
             if let agent = store.session(withId: sessionId)?.subagents[agentId] {
-                SubagentRow(agent: agent, now: now)
+                SubagentRow(agent: agent, now: now, style: store.sidebarStyle)
             }
         case .brain:
             EmptyView()
@@ -180,87 +184,166 @@ struct SessionRow: View {
     let title: String
     let owned: Bool
     let now: Date
+    let style: SidebarStyle
+    var attention: SessionAttention = .seen
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: session.live.status.symbolName)
-                .foregroundStyle(session.live.status.color)
-                .font(.caption)
-                .padding(.top, 3)
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: style.iconStyle == .avatar ? .center : .top, spacing: style.iconStyle == .avatar ? 10 : 8) {
+            SessionIcon(session: session, title: title, style: style, attention: attention)
+            VStack(alignment: .leading, spacing: style.density.lineSpacing) {
                 Text(title)
+                    .font(style.titleFont)
+                    .fontWeight(attention == .seen || attention == .working ? .regular : .semibold)
                     .lineLimit(1)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if !detail.isEmpty || attention != .seen {
+                    (statusPrefix + Text(detail).foregroundStyle(.secondary))
+                        .font(style.detailFont)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 4)
+            if status == .working {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(statusColor)
+                    .help("Trabajando")
+            }
             if owned {
-                Image(systemName: "terminal")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Image(systemName: "apple.terminal.fill")
+                    .font(style.detailFont)
+                    .foregroundStyle(style.accent.color)
                     .help("Abierta en Claude Deck")
             }
             if session.runningSubagentCount(at: now) > 0 {
                 Text("\(session.runningSubagentCount(at: now))")
-                    .font(.caption2.monospacedDigit())
+                    .font(style.detailFont.monospacedDigit())
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
                     .background(Capsule().fill(.green.opacity(0.25)))
             }
         }
+        .padding(.vertical, style.density.rowPadding)
+        .padding(.leading, 6)
+        .background {
+            if let highlight {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(highlight.opacity(0.14))
+                    .padding(.horizontal, -4)
+                    .padding(.vertical, -2)
+            }
+        }
+        .background(alignment: .leading) {
+            if let marker {
+                Capsule()
+                    .fill(marker)
+                    .frame(width: attention == .unread ? 7 : 4, height: attention == .unread ? 7 : nil)
+                    .padding(.vertical, 2)
+                    .shadow(color: marker.opacity(0.7), radius: 3)
+                    .offset(x: attention == .unread ? -3 : 0)
+            }
+        }
     }
 
-    private var subtitle: String {
-        let folder = session.summary.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? session.project
-        let context = session.summary.contextTokens.map { SessionSummary.formatTokens($0) + " ctx" }
-        return [folder, session.summary.gitBranch, context, RelativeTime.describe(session.summary.lastActivity, relativeTo: now)]
-            .compactMap { $0 }
-            .filter { !$0.isEmpty }
-            .joined(separator: " · ")
+    private var status: SessionStatus { session.live.status }
+
+    private var statusColor: Color { style.statusColor(status.badgeColor) }
+
+    private var unreadColor: Color { style.accent.color }
+
+    private var marker: Color? {
+        switch attention {
+        case .needsYou, .working: return statusColor
+        case .unread: return unreadColor
+        case .seen: return nil
+        }
+    }
+
+    private var highlight: Color? {
+        switch attention {
+        case .needsYou: return statusColor
+        case .unread: return unreadColor
+        case .working, .seen: return nil
+        }
+    }
+
+    private var statusPrefix: Text {
+        let label: String
+        let color: Color
+        switch attention {
+        case .working: (label, color) = ("Trabajando…", statusColor)
+        case .needsYou: (label, color) = ("Esperando tu permiso", statusColor)
+        case .unread: (label, color) = (status == .ended ? "Terminó" : "Respuesta nueva", unreadColor)
+        case .seen: return Text("")
+        }
+        return Text(label + (detail.isEmpty ? "" : SidebarStyle.separator)).foregroundStyle(color).bold()
+    }
+
+    private var detail: String {
+        style.detailLine([
+            .folder: session.summary.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? session.project,
+            .branch: session.summary.gitBranch ?? "",
+            .context: session.summary.contextTokens.map { SessionSummary.formatTokens($0) + " ctx" } ?? "",
+            .lastActivity: RelativeTime.describe(session.summary.lastActivity, relativeTo: now),
+            .preview: session.summary.preview ?? "",
+        ])
     }
 }
 
 struct SubagentRow: View {
     let agent: SubagentState
     let now: Date
+    let style: SidebarStyle
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: agent.isRunning(at: now) ? "circle.fill" : "checkmark.circle")
-                .foregroundStyle(agent.isRunning(at: now) ? Color.green : Color.secondary)
-                .font(.caption2)
-            VStack(alignment: .leading, spacing: 1) {
+            if style.iconStyle == .avatar {
+                IconTile(content: .symbol(agent.isRunning(at: now) ? "gearshape.2.fill" : "checkmark"),
+                         color: agent.isRunning(at: now) ? style.statusColor(.green) : .gray,
+                         size: style.iconSize * 0.75)
+            } else {
+                Image(systemName: agent.isRunning(at: now) ? "circle.fill" : "checkmark.circle")
+                    .foregroundStyle(agent.isRunning(at: now) ? style.statusColor(.green) : Color.secondary)
+                    .font(style.detailFont)
+            }
+            VStack(alignment: .leading, spacing: style.density.lineSpacing) {
                 Text(agent.displayTitle)
+                    .font(style.titleFont)
                     .lineLimit(1)
                 Text([agent.meta?.agentType, RelativeTime.describe(agent.summary.lastActivity, relativeTo: now)]
                     .compactMap { $0 }
                     .joined(separator: " · "))
-                    .font(.caption)
+                    .font(style.detailFont)
                     .foregroundStyle(.secondary)
             }
         }
+        .padding(.vertical, style.density.rowPadding)
     }
 }
 
 struct SavedBrainRow: View {
     let brain: SavedBrain
     let now: Date
+    let style: SidebarStyle
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "brain")
-                .foregroundStyle(.pink)
-                .font(.caption)
-            VStack(alignment: .leading, spacing: 2) {
+            if style.iconStyle == .avatar {
+                IconTile(content: .symbol("brain.head.profile"), color: style.statusColor(.pink), size: style.iconSize * 0.85)
+            } else {
+                Image(systemName: "brain")
+                    .foregroundStyle(style.statusColor(.pink))
+                    .font(style.detailFont)
+            }
+            VStack(alignment: .leading, spacing: style.density.lineSpacing) {
                 Text(brain.name)
+                    .font(style.titleFont)
                     .lineLimit(1)
                 Text("\(brain.sessionIds.count) sesiones · \(RelativeTime.describe(brain.updatedAt, relativeTo: now))")
-                    .font(.caption)
+                    .font(style.detailFont)
                     .foregroundStyle(.secondary)
             }
         }
+        .padding(.vertical, style.density.rowPadding)
     }
 }
 
