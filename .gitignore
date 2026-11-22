@@ -1,0 +1,4 @@
+.build/
+App/.build/
+.swiftpm/
+.build-tests/
