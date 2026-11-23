@@ -2,6 +2,14 @@ import DeckCore
 import Foundation
 
 let payload = FileHandle.standardInput.readDataToEndOfFile()
+
+if CommandLine.arguments.dropFirst().first == "statusline" {
+    if let line = StatusLine.line(for: payload, catalog: SessionCatalogStore.standard.load()) {
+        FileHandle.standardOutput.write(Data(line.utf8))
+    }
+    exit(0)
+}
+
 let claudePid = ProcessTree.ancestor(of: getppid()) { ProcessTree.isClaudeExecutable($0.path) }
 
 if let event = HookEvent.fromHookPayload(payload, timestamp: Date(), pid: claudePid) {

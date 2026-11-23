@@ -138,4 +138,36 @@ struct AppearanceTests {
         #expect(store.load().appTheme == .system)
         #expect(store.load().resolved(for: "s1").fontSize == 20)
     }
+
+    @Test func paddingAndOpacityFollowTheScopeAndStayWithinLimits() {
+        var settings = AppearanceSettings()
+        #expect(settings.resolved(for: "s1").padding == TerminalAppearance.standardPadding)
+        #expect(settings.resolved(for: "s1").opacity == 1)
+
+        settings.update("s1", scope: .session) { $0.padding = 99; $0.opacity = 0.1 }
+        #expect(settings.resolved(for: "s1").padding == TerminalAppearance.paddingRange.upperBound)
+        #expect(settings.resolved(for: "s1").opacity == TerminalAppearance.opacityRange.lowerBound)
+        #expect(settings.resolved(for: "s1").isTranslucent)
+        #expect(settings.resolved(for: "s2").opacity == 1)
+
+        settings.update("s2", scope: .all) { $0.opacity = 0.8 }
+        #expect(settings.resolved(for: "s1").opacity == 0.8)
+        #expect(settings.resolved(for: "s1").padding == TerminalAppearance.paddingRange.upperBound)
+        #expect(settings.resolved(for: "s3").opacity == 0.8)
+
+        settings.update("s1", scope: .session) { $0.padding = TerminalAppearance.standardPadding }
+        #expect(!settings.isCustomized("s1"))
+    }
+
+    @Test func olderFilesWithoutTheNewFieldsGetTheirDefaults() {
+        let store = AppearanceStore(file: directory.url.appendingPathComponent("old/appearance.json"))
+        write(#"{"defaults":{"themeId":"nord","fontName":"","fontSize":14}}"#, to: store.file)
+
+        let loaded = store.load()
+
+        #expect(loaded.resolved(for: nil).themeId == "nord")
+        #expect(loaded.resolved(for: nil).padding == TerminalAppearance.standardPadding)
+        #expect(loaded.resolved(for: nil).opacity == 1)
+        #expect(loaded.claudeStatusLine)
+    }
 }

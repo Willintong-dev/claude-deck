@@ -13,6 +13,7 @@ public struct ClaudeLaunch: Equatable, Sendable {
     public let systemPromptFile: String?
     public let brainDirectory: String?
     public let environment: [String: String]
+    public let statusLineCommand: String?
 
     public init(
         sessionId: String,
@@ -21,7 +22,8 @@ public struct ClaudeLaunch: Equatable, Sendable {
         skipPermissions: Bool,
         systemPromptFile: String? = nil,
         brainDirectory: String? = nil,
-        environment: [String: String] = [:]
+        environment: [String: String] = [:],
+        statusLineCommand: String? = nil
     ) {
         self.sessionId = sessionId
         self.directory = directory
@@ -30,6 +32,7 @@ public struct ClaudeLaunch: Equatable, Sendable {
         self.systemPromptFile = systemPromptFile
         self.brainDirectory = brainDirectory
         self.environment = environment
+        self.statusLineCommand = statusLineCommand
     }
 
     public var claudeArguments: [String] {
@@ -43,7 +46,16 @@ public struct ClaudeLaunch: Equatable, Sendable {
         if let brainDirectory {
             arguments += ["--allowedTools", "Read(/\(brainDirectory)/**)", "Edit(/\(brainDirectory)/**)"]
         }
+        if let statusLineCommand {
+            arguments += ["--settings", Self.statusLineSettings(command: statusLineCommand)]
+        }
         return arguments
+    }
+
+    public static func statusLineSettings(command: String) -> String {
+        let settings: [String: Any] = ["statusLine": ["type": "command", "command": command, "padding": 0]]
+        let data = (try? JSONSerialization.data(withJSONObject: settings, options: [.sortedKeys, .withoutEscapingSlashes])) ?? Data()
+        return String(decoding: data, as: UTF8.self)
     }
 
     public func shellCommand(loginShell: String) -> String {

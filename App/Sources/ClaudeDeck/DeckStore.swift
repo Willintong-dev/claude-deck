@@ -316,6 +316,11 @@ final class DeckStore {
         set { updateAppearanceSettings { $0.appTheme = newValue } }
     }
 
+    var claudeStatusLine: Bool {
+        get { appearance.claudeStatusLine }
+        set { updateAppearanceSettings { $0.claudeStatusLine = newValue } }
+    }
+
     var sidebarStyle: SidebarStyle { appearance.sidebar }
 
     func updateSidebar(_ change: (inout SidebarStyle) -> Void) {
@@ -724,7 +729,8 @@ final class DeckStore {
             skipPermissions: skipPermissions,
             systemPromptFile: promptFile,
             brainDirectory: promptFile.map { _ in library.workingDirectory(sessionId).path },
-            environment: promptFile == nil ? [:] : [BrainPrompt.environmentKey: library.workingBrainFile(sessionId).path]
+            environment: promptFile == nil ? [:] : [BrainPrompt.environmentKey: library.workingBrainFile(sessionId).path],
+            statusLineCommand: appearance.claudeStatusLine ? Shell.quote(DeckPaths.standard.hookExecutable.path) + " statusline" : nil
         )
         pendingLaunches[launch.sessionId] = PendingLaunch(directory: launch.directory, createdAt: Date())
         selection = .session(launch.sessionId)

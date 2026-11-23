@@ -120,22 +120,50 @@ public struct TerminalAppearance: Codable, Equatable, Sendable {
     public var themeId: String
     public var fontName: String
     public var fontSize: Double
+    public var padding: Double
+    public var opacity: Double
 
     public static let systemFont = ""
     public static let standard = TerminalAppearance(themeId: TerminalTheme.fallback.id, fontName: systemFont, fontSize: 12.5)
     public static let sizeRange: ClosedRange<Double> = 8...32
     public static let zoomStep: Double = 1
+    public static let standardPadding: Double = 10
+    public static let paddingRange: ClosedRange<Double> = 0...40
+    public static let opacityRange: ClosedRange<Double> = 0.5...1
 
-    public init(themeId: String, fontName: String, fontSize: Double) {
+    public init(themeId: String, fontName: String, fontSize: Double, padding: Double = standardPadding, opacity: Double = 1) {
         self.themeId = themeId
         self.fontName = fontName
         self.fontSize = Self.clamp(fontSize)
+        self.padding = Self.clamp(padding, to: Self.paddingRange)
+        self.opacity = Self.clamp(opacity, to: Self.opacityRange)
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            themeId: try container.decodeIfPresent(String.self, forKey: .themeId) ?? Self.standard.themeId,
+            fontName: try container.decodeIfPresent(String.self, forKey: .fontName) ?? Self.standard.fontName,
+            fontSize: try container.decodeIfPresent(Double.self, forKey: .fontSize) ?? Self.standard.fontSize,
+            padding: try container.decodeIfPresent(Double.self, forKey: .padding) ?? Self.standardPadding,
+            opacity: try container.decodeIfPresent(Double.self, forKey: .opacity) ?? 1
+        )
     }
 
     public var theme: TerminalTheme { TerminalTheme.named(themeId) }
 
+    public var isTranslucent: Bool { opacity < 1 }
+
     public static func clamp(_ size: Double) -> Double {
-        min(max(size, sizeRange.lowerBound), sizeRange.upperBound)
+        clamp(size, to: sizeRange)
+    }
+
+    static func clamp(_ value: Double, to range: ClosedRange<Double>) -> Double {
+        min(max(value, range.lowerBound), range.upperBound)
+    }
+
+    mutating func clampAll() {
+        self = TerminalAppearance(themeId: themeId, fontName: fontName, fontSize: fontSize, padding: padding, opacity: opacity)
     }
 }
 
@@ -143,14 +171,18 @@ public struct AppearanceOverride: Codable, Equatable, Sendable {
     public var themeId: String?
     public var fontName: String?
     public var fontSize: Double?
+    public var padding: Double?
+    public var opacity: Double?
 
-    public init(themeId: String? = nil, fontName: String? = nil, fontSize: Double? = nil) {
+    public init(themeId: String? = nil, fontName: String? = nil, fontSize: Double? = nil, padding: Double? = nil, opacity: Double? = nil) {
         self.themeId = themeId
         self.fontName = fontName
         self.fontSize = fontSize
+        self.padding = padding
+        self.opacity = opacity
     }
 
-    public var isEmpty: Bool { themeId == nil && fontName == nil && fontSize == nil }
+    public var isEmpty: Bool { self == AppearanceOverride() }
 }
 
 public struct AppearanceSettings: Codable, Equatable, Sendable {
@@ -158,6 +190,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public private(set) var defaults: TerminalAppearance = .standard
     public private(set) var overrides: [String: AppearanceOverride] = [:]
     public var sidebar = SidebarStyle()
+    public var claudeStatusLine = true
 
     public init() {}
 
@@ -167,6 +200,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         defaults = (try? container.decodeIfPresent(TerminalAppearance.self, forKey: .defaults)) ?? .standard
         overrides = (try? container.decodeIfPresent([String: AppearanceOverride].self, forKey: .overrides)) ?? [:]
         sidebar = (try? container.decodeIfPresent(SidebarStyle.self, forKey: .sidebar)) ?? SidebarStyle()
+        claudeStatusLine = (try? container.decodeIfPresent(Bool.self, forKey: .claudeStatusLine)) ?? true
     }
 
     public func resolved(for sessionId: String?) -> TerminalAppearance {
@@ -174,7 +208,9 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         return TerminalAppearance(
             themeId: override.themeId ?? defaults.themeId,
             fontName: override.fontName ?? defaults.fontName,
-            fontSize: override.fontSize ?? defaults.fontSize
+            fontSize: override.fontSize ?? defaults.fontSize,
+            padding: override.padding ?? defaults.padding,
+            opacity: override.opacity ?? defaults.opacity
         )
     }
 
@@ -186,28 +222,32 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         let before = resolved(for: sessionId)
         var after = before
         change(&after)
-        after.fontSize = TerminalAppearance.clamp(after.fontSize)
+        after.clampAll()
         if scope == .session, let sessionId {
             store(after, for: sessionId)
             return
         }
-        if after.themeId != before.themeId {
-            defaults.themeId = after.themeId
-            clearOverrides(\.themeId)
-        }
-        if after.fontName != before.fontName {
-            defaults.fontName = after.fontName
-            clearOverrides(\.fontName)
-        }
-        if after.fontSize != before.fontSize {
-            defaults.fontSize = after.fontSize
-            clearOverrides(\.fontSize)
-        }
+        applyToAll(\.themeId, \.themeId, before: before, after: after)
+        applyToAll(\.fontName, \.fontName, before: before, after: after)
+        applyToAll(\.fontSize, \.fontSize, before: before, after: after)
+        applyToAll(\.padding, \.padding, before: before, after: after)
+        applyToAll(\.opacity, \.opacity, before: before, after: after)
         for id in Array(overrides.keys) { store(resolved(for: id), for: id) }
     }
 
     public mutating func zoom(_ sessionId: String?, steps: Int, scope: AppearanceScope = .session) {
         update(sessionId, scope: scope) { $0.fontSize += Double(steps) * TerminalAppearance.zoomStep }
+    }
+
+    private mutating func applyToAll<Value: Equatable>(
+        _ field: WritableKeyPath<TerminalAppearance, Value>,
+        _ overrideField: WritableKeyPath<AppearanceOverride, Value?>,
+        before: TerminalAppearance,
+        after: TerminalAppearance
+    ) {
+        guard after[keyPath: field] != before[keyPath: field] else { return }
+        defaults[keyPath: field] = after[keyPath: field]
+        clearOverrides(overrideField)
     }
 
     private mutating func clearOverrides<Value>(_ field: WritableKeyPath<AppearanceOverride, Value?>) {
@@ -236,7 +276,9 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         let override = AppearanceOverride(
             themeId: appearance.themeId == defaults.themeId ? nil : appearance.themeId,
             fontName: appearance.fontName == defaults.fontName ? nil : appearance.fontName,
-            fontSize: appearance.fontSize == defaults.fontSize ? nil : appearance.fontSize
+            fontSize: appearance.fontSize == defaults.fontSize ? nil : appearance.fontSize,
+            padding: appearance.padding == defaults.padding ? nil : appearance.padding,
+            opacity: appearance.opacity == defaults.opacity ? nil : appearance.opacity
         )
         overrides[sessionId] = override.isEmpty ? nil : override
     }

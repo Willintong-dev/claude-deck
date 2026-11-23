@@ -10,6 +10,7 @@ public struct DeckPaths: Sendable {
     }
 
     public var eventsFile: URL { deckDirectory.appendingPathComponent("events.jsonl") }
+    public var hookExecutable: URL { deckDirectory.appendingPathComponent("bin/deck-hook") }
 
     public static var standard: DeckPaths {
         let home = FileManager.default.homeDirectoryForCurrentUser

@@ -48,6 +48,18 @@ struct ClaudeLaunchTests {
         #expect(resume.shellCommand(loginShell: "/bin/zsh") == "exec /bin/zsh -lic 'exec claude --resume \(id)'")
     }
 
+    @Test func addsTheDeckStatusLineOnlyWhenAsked() throws {
+        let launch = ClaudeLaunch(sessionId: id, directory: "/r", mode: .resume, skipPermissions: false, statusLineCommand: "/h/bin/deck-hook statusline")
+
+        #expect(Array(launch.claudeArguments.suffix(2)) == [
+            "--settings", #"{"statusLine":{"command":"/h/bin/deck-hook statusline","padding":0,"type":"command"}}"#,
+        ])
+        let settings = try #require(launch.claudeArguments.last)
+        let object = try JSONSerialization.jsonObject(with: Data(settings.utf8)) as? [String: [String: Any]]
+        #expect(object?["statusLine"]?["command"] as? String == "/h/bin/deck-hook statusline")
+        #expect(!ClaudeLaunch(sessionId: id, directory: "/r", mode: .resume, skipPermissions: false).claudeArguments.contains("--settings"))
+    }
+
     @Test func quotesShellArgumentsSafely() {
         #expect(Shell.quote("plain-value_1.2") == "plain-value_1.2")
         #expect(Shell.quote("with space") == "'with space'")

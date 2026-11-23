@@ -7,14 +7,17 @@ App nativa de macOS para ver y manejar todas tus sesiones de [Claude Code](https
 - **Panel de sesiones:** muestra en tiempo real las sesiones activas y las recientes, con su estado: trabajando, esperando tu permiso, inactiva o cerrada. También muestra sus subagentes.
 - **Terminal integrada:** las sesiones abiertas desde Claude Deck corren en tmux y se ven dentro de la app. Si cierras la ventana, siguen vivas.
 - **Traer a Claude Deck:** pasa a la app una sesión que abriste en otra terminal.
-- **Cerebro por sesión:** cada sesión puede tener notas propias que se guardan y se reutilizan. "Liberar contexto" reinicia la sesión cuando el contexto se llena, sin perder lo importante.
+- **Cerebro por sesión:** cada sesión abierta desde Claude Deck tiene su propio `BRAIN.md`, donde Claude guarda lo que vale la pena recordar. Al cerrarla puedes guardarlo como especialista con un nombre y usarlo de punto de partida en sesiones nuevas.
+- **Liberar contexto:** primero le pide a Claude que actualice el cerebro de la sesión y, cuando termina, manda `/compact`. La sesión sigue siendo la misma, con un resumen corto y el cerebro recargado. Se activa cuando Claude no está trabajando ni esperando tu permiso, y se resalta en naranja pasados los 100k tokens.
 - **Organización:** puedes renombrar sesiones, agruparlas y borrarlas por completo.
 - **Lo que te necesita, a la vista:** cada sesión tiene un avatar de color con sus iniciales y su estado.
   - Las que esperan tu permiso se resaltan en naranja.
   - Las que están trabajando muestran una barra verde y una ruedita.
   - Las que respondieron o terminaron desde la última vez que las abriste llevan un punto azul y el texto "Respuesta nueva".
   - Con clic derecho → "Marcar como no vista" dejas una pendiente para después.
-- **Apariencia de la terminal:** tema, letra, tamaño y zoom (⌘+, ⌘-, ⌘0 o pellizco). Cada cambio puede aplicarse a una sola sesión o a todas.
+- **Apariencia de la terminal:** tema, letra, tamaño, zoom (⌘+, ⌘-, ⌘0 o pellizco), margen alrededor de la terminal y opacidad del fondo con el escritorio desenfocado detrás. Cada cambio puede aplicarse a una sola sesión o a todas.
+- **Colores de Claude según el tema:** si Claude Code usa el tema `dark-ansi` (o `light-ansi`), toma los colores del tema de Claude Deck. Ese ajuste es de Claude y vale para todas tus terminales; con temas claros de Claude Deck conviene `light-ansi`.
+- **Barra de estado propia:** al pie de Claude se muestra el nombre de la sesión, el modelo, el contexto usado (verde, amarillo o rojo) y la rama. Solo en las sesiones abiertas desde Claude Deck, y se desactiva en Ajustes → Apariencia. Se aplica al abrir o reanudar una sesión.
 - **Apariencia de la lista:** en Ajustes → Lista eliges la letra y sus tamaños, qué muestra la línea de detalle (carpeta, rama, contexto, hace cuánto, último mensaje), la densidad, el color de acento, los colores de estado, el fondo y el estilo de íconos.
 - **Avisos:** ventanitas flotantes cuando Claude pide permiso, termina su turno, se cierra una sesión o termina un subagente. Puedes elegir la posición, la pantalla, la duración, el sonido y el texto de cada evento.
 - **Barra de menús:** un ícono indica cuántas sesiones esperan tu respuesta.

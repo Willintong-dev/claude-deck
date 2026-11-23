@@ -61,6 +61,22 @@ struct TerminalAppearanceForm: View {
                 }
                 .help("Acercar (⌘+)")
             }
+            LabeledContent("Margen") {
+                HStack {
+                    Slider(value: binding(\.padding), in: TerminalAppearance.paddingRange, step: 2)
+                    Text("\(Int(current.padding)) pt")
+                        .monospacedDigit()
+                        .frame(width: 44, alignment: .trailing)
+                }
+            }
+            LabeledContent("Opacidad") {
+                HStack {
+                    Slider(value: binding(\.opacity), in: TerminalAppearance.opacityRange, step: 0.05)
+                    Text("\(Int((current.opacity * 100).rounded())) %")
+                        .monospacedDigit()
+                        .frame(width: 44, alignment: .trailing)
+                }
+            }
             ThemePreview(appearance: current)
             if let sessionId {
                 HStack {
@@ -137,6 +153,12 @@ struct AppearanceSettingsView: View {
             .pickerStyle(.segmented)
             Divider()
             TerminalAppearanceForm(store: store, sessionId: nil)
+            Divider()
+            Toggle("Barra de estado de Claude Deck", isOn: $store.claudeStatusLine)
+            Text("Muestra nombre de la sesión, modelo, contexto y rama al pie de Claude, solo en las sesiones abiertas desde Claude Deck. Se aplica al abrir o reanudar una sesión.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             Text("Desde el botón de la paleta en la cabecera de cada sesión eliges si un cambio es solo para esa sesión o para todas. El zoom con ⌘+, ⌘-, ⌘0 o pellizco sigue esa misma elección.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

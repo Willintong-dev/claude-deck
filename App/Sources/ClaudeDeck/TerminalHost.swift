@@ -48,8 +48,11 @@ final class TerminalHost: NSObject {
             view.nativeForegroundColor = TerminalColors.color(theme.foreground)
             view.caretColor = TerminalColors.color(theme.cursor)
             view.selectedTextBackgroundColor = TerminalColors.color(theme.selection)
-            view.superview?.layer?.backgroundColor = TerminalColors.color(theme.background).cgColor
         }
+        if previous?.themeId != appearance.themeId || previous?.opacity != appearance.opacity {
+            view.backgroundOpacity = CGFloat(appearance.opacity)
+        }
+        (view.superview as? TerminalFrameView)?.apply(appearance)
         if previous?.fontName != appearance.fontName || previous?.fontSize != appearance.fontSize {
             view.font = TerminalFonts.font(named: appearance.fontName, size: appearance.fontSize)
         }
@@ -98,25 +101,69 @@ extension TerminalHost: LocalProcessTerminalViewDelegate {
 struct TerminalContainer: NSViewRepresentable {
     let sessionId: String
 
-    func makeNSView(context: Context) -> NSView {
-        let container = NSView()
-        container.wantsLayer = true
-        container.layer?.backgroundColor = TerminalColors.color(TerminalHost.shared.appearance(sessionId).theme.background).cgColor
-        return container
+    func makeNSView(context: Context) -> TerminalFrameView {
+        let frame = TerminalFrameView()
+        frame.apply(TerminalHost.shared.appearance(sessionId))
+        return frame
     }
 
-    func updateNSView(_ container: NSView, context: Context) {
+    func updateNSView(_ frame: TerminalFrameView, context: Context) {
         guard let terminal = TerminalHost.shared.terminal(for: sessionId) else { return }
-        guard terminal.superview !== container else { return }
-        container.subviews.forEach { $0.removeFromSuperview() }
-        terminal.removeFromSuperview()
-        terminal.frame = container.bounds
-        terminal.autoresizingMask = [.width, .height]
-        container.addSubview(terminal)
-        container.layer?.backgroundColor = terminal.nativeBackgroundColor.cgColor
+        frame.apply(TerminalHost.shared.appearance(sessionId))
+        guard terminal.superview !== frame else { return }
+        frame.host(terminal)
         DispatchQueue.main.async {
-            container.window?.makeFirstResponder(terminal)
+            frame.window?.makeFirstResponder(terminal)
         }
+    }
+}
+
+final class TerminalFrameView: NSView {
+    private let blur = NSVisualEffectView()
+    private let tint = NSView()
+    private weak var terminal: NSView?
+    private var padding: CGFloat = 0
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        blur.blendingMode = .behindWindow
+        blur.material = .hudWindow
+        blur.state = .active
+        blur.autoresizingMask = [.width, .height]
+        tint.wantsLayer = true
+        tint.autoresizingMask = [.width, .height]
+        addSubview(blur)
+        addSubview(tint)
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    func host(_ view: NSView) {
+        terminal?.removeFromSuperview()
+        view.removeFromSuperview()
+        view.autoresizingMask = []
+        addSubview(view)
+        terminal = view
+        needsLayout = true
+    }
+
+    func apply(_ appearance: TerminalAppearance) {
+        let background = TerminalColors.color(appearance.theme.background)
+        blur.isHidden = !appearance.isTranslucent
+        tint.layer?.backgroundColor = background.withAlphaComponent(CGFloat(appearance.opacity)).cgColor
+        blur.appearance = NSAppearance(named: appearance.theme.isDark ? .darkAqua : .aqua)
+        guard padding != CGFloat(appearance.padding) else { return }
+        padding = CGFloat(appearance.padding)
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        blur.frame = bounds
+        tint.frame = bounds
+        terminal?.frame = bounds.insetBy(dx: padding, dy: padding)
     }
 }
 
