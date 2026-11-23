@@ -9,7 +9,13 @@ App nativa de macOS para ver y manejar todas tus sesiones de [Claude Code](https
 - **Traer a Claude Deck:** pasa a la app una sesión que abriste en otra terminal.
 - **Cerebro por sesión:** cada sesión puede tener notas propias que se guardan y se reutilizan. "Liberar contexto" reinicia la sesión cuando el contexto se llena, sin perder lo importante.
 - **Organización:** puedes renombrar sesiones, agruparlas y borrarlas por completo.
-- **Apariencia:** tema, letra, tamaño y zoom (⌘+, ⌘-, ⌘0 o pellizco). Cada cambio puede aplicarse a una sola sesión o a todas.
+- **Lo que te necesita, a la vista:** cada sesión tiene un avatar de color con sus iniciales y su estado.
+  - Las que esperan tu permiso se resaltan en naranja.
+  - Las que están trabajando muestran una barra verde y una ruedita.
+  - Las que respondieron o terminaron desde la última vez que las abriste llevan un punto azul y el texto "Respuesta nueva".
+  - Con clic derecho → "Marcar como no vista" dejas una pendiente para después.
+- **Apariencia de la terminal:** tema, letra, tamaño y zoom (⌘+, ⌘-, ⌘0 o pellizco). Cada cambio puede aplicarse a una sola sesión o a todas.
+- **Apariencia de la lista:** en Ajustes → Lista eliges la letra y sus tamaños, qué muestra la línea de detalle (carpeta, rama, contexto, hace cuánto, último mensaje), la densidad, el color de acento, los colores de estado, el fondo y el estilo de íconos.
 - **Avisos:** ventanitas flotantes cuando Claude pide permiso, termina su turno, se cierra una sesión o termina un subagente. Puedes elegir la posición, la pantalla, la duración, el sonido y el texto de cada evento.
 - **Barra de menús:** un ícono indica cuántas sesiones esperan tu respuesta.
 
@@ -66,7 +72,8 @@ Borrar `~/.claude-deck` elimina los nombres, grupos, cerebros guardados y ajuste
 | --- | --- |
 | `~/.claude-deck/events.jsonl` | Eventos que reciben los hooks |
 | `~/.claude-deck/catalog.json` | Nombres, grupos y sesiones borradas |
-| `~/.claude-deck/appearance.json` | Temas, letra y tamaño |
+| `~/.claude-deck/appearance.json` | Apariencia de la terminal y de la lista |
+| `~/.claude-deck/read.json` | Hasta dónde viste cada sesión |
 | `~/.claude-deck/notifications.json` | Configuración de avisos |
 | `~/.claude-deck/brains/` | Cerebros guardados y en uso |
 
