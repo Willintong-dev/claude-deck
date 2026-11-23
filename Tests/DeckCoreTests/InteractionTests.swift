@@ -138,6 +138,37 @@ struct TmuxIntegrationTests {
         #expect(tmux.run(tmux.killSessionArguments(sessionId: id)).status == 0)
         #expect(tmux.ownedSessionIds().isEmpty)
     }
+
+    @Test func wheelScrollsOneLinePerStepAndReloadsIntoARunningServer() throws {
+        let executable = try #require(Tmux.locate())
+        let directory = TemporaryDirectory()
+        let tmux = Tmux(executable: executable, configFile: directory.file("tmux.conf"), socketName: "claude-deck-wheel-\(getpid())")
+        try tmux.writeConfiguration()
+        defer { tmux.run(tmux.baseArguments + ["kill-server"]) }
+        #expect(tmux.run(tmux.baseArguments + ["new-session", "-d", "-s", "cd-x", "cat"]).status == 0)
+
+        #expect(tmux.run(tmux.reloadConfigurationArguments).status == 0)
+        let copyMode = tmux.run(tmux.baseArguments + ["list-keys", "-T", "copy-mode"]).output
+        let wheelUp = copyMode.split(separator: "\n").first { $0.contains("WheelUpPane") } ?? ""
+        #expect(wheelUp.contains("scroll-up"))
+        #expect(!wheelUp.contains("-N"))
+        let root = tmux.run(tmux.baseArguments + ["list-keys", "-T", "root"]).output
+        #expect(root.split(separator: "\n").contains { $0.contains("WheelUpPane") && $0.contains("copy-mode -e") && $0.contains("scroll-up") })
+    }
+}
+
+struct SidebarDropTests {
+    @Test func acceptsOnlyKnownSessionsDraggedFromTheList() {
+        let payloads = [
+            SidebarDrop.payload(for: "s1"),
+            "texto suelto",
+            SidebarDrop.payload(for: "desconocida"),
+            SidebarDrop.payload(for: "s1"),
+            SidebarDrop.payload(for: "s2"),
+        ]
+        #expect(SidebarDrop.sessionIds(in: payloads) { ["s1", "s2"].contains($0) } == ["s1", "s2"])
+        #expect(SidebarDrop.sessionIds(in: ["s1"]) { _ in true }.isEmpty)
+    }
 }
 
 struct RunningProcessIndexTests {

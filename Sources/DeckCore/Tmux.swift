@@ -100,6 +100,11 @@ public struct Tmux: Sendable {
     set -g exit-empty on
     set -g extended-keys on
     set -g allow-passthrough on
+    bind -n WheelUpPane if -F "#{||:#{pane_in_mode},#{mouse_any_flag}}" { send -M } { copy-mode -e; send -X scroll-up }
+    bind -T copy-mode WheelUpPane send -X scroll-up
+    bind -T copy-mode WheelDownPane send -X scroll-down
+    bind -T copy-mode-vi WheelUpPane send -X scroll-up
+    bind -T copy-mode-vi WheelDownPane send -X scroll-down
 
     """
 
@@ -184,6 +189,10 @@ public struct Tmux: Sendable {
     public func writeConfiguration() throws {
         try FileManager.default.createDirectory(at: configFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Self.configuration.write(to: configFile, atomically: true, encoding: .utf8)
+    }
+
+    public var reloadConfigurationArguments: [String] {
+        baseArguments + ["source-file", configFile.path]
     }
 
     public static func environment(base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {

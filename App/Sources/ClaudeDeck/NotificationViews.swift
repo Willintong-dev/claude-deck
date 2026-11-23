@@ -264,9 +264,10 @@ struct NotificationSettingsView: View {
                     .disabled(rule == editing.defaultRule)
                 }
             }
+            TelegramSection(store: store)
         }
         .formStyle(.grouped)
-        .frame(width: 500)
+        .frame(width: 500, height: 640)
     }
 
     private var editing: NotificationKind { store.notificationEditingKind }
@@ -289,6 +290,78 @@ struct NotificationSettingsView: View {
         Binding(
             get: { store.notifications.rule(for: kind)[keyPath: keyPath] },
             set: { value in store.updateNotifications { $0.update(kind) { $0[keyPath: keyPath] = value } } }
+        )
+    }
+}
+
+struct TelegramSection: View {
+    @Bindable var store: DeckStore
+
+    var body: some View {
+        Section("Telegram") {
+            Toggle("Enviar avisos a Telegram", isOn: telegram(\.enabled))
+            SecureField("Token del bot", text: Binding(
+                get: { store.telegramToken },
+                set: { store.setTelegramToken($0) }
+            ))
+            Text("Créalo hablando con @BotFather en Telegram (/newbot). Se guarda en ~/.claude-deck/telegram-token, solo legible por tu usuario.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                TextField("Chat", text: telegram(\.chatId))
+                Button("Detectar chat") { store.detectTelegramChat() }
+                    .disabled(store.telegramToken.isEmpty)
+            }
+            if store.telegramChats.count > 1 {
+                Picker("Chats encontrados", selection: telegram(\.chatId)) {
+                    ForEach(store.telegramChats, id: \.id) { Text($0.name).tag($0.id) }
+                }
+            }
+            LabeledContent("Solo si no toco la Mac hace") {
+                HStack {
+                    Slider(
+                        value: Binding(
+                            get: { store.notifications.telegram.idleMinutes },
+                            set: { value in store.updateNotifications { $0.telegram.setIdleMinutes(value.rounded()) } }
+                        ),
+                        in: TelegramSettings.idleRange
+                    )
+                    Text(idleLabel)
+                        .monospacedDigit()
+                        .frame(width: 70, alignment: .trailing)
+                }
+            }
+            ForEach(NotificationKind.allCases) { kind in
+                Toggle(isOn: Binding(
+                    get: { store.notifications.telegram.kinds.contains(kind) },
+                    set: { on in store.updateNotifications { if on { $0.telegram.kinds.insert(kind) } else { $0.telegram.kinds.remove(kind) } } }
+                )) {
+                    Label(kind.label, systemImage: kind.symbolName)
+                }
+            }
+            HStack {
+                Button("Enviar prueba") { store.sendTelegramTest() }
+                    .disabled(store.telegramToken.isEmpty || !store.notifications.telegram.isConfigured)
+                if let status = store.telegramStatus {
+                    Text(status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private var idleLabel: String {
+        let minutes = store.notifications.telegram.idleMinutes
+        return minutes == TelegramSettings.always ? "Siempre" : "\(Int(minutes)) min"
+    }
+
+    private func telegram<Value>(_ keyPath: WritableKeyPath<TelegramSettings, Value>) -> Binding<Value> {
+        Binding(
+            get: { store.notifications.telegram[keyPath: keyPath] },
+            set: { value in store.updateNotifications { $0.telegram[keyPath: keyPath] = value } }
         )
     }
 }

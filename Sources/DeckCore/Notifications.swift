@@ -101,6 +101,7 @@ public struct NotificationSettings: Codable, Equatable, Sendable {
     public var duration: Double = 6
     public var volume: Double = 0.7
     public var quietWhenViewing = true
+    public var telegram = TelegramSettings()
     private var rules: [String: NotificationRule] = [:]
 
     public static let durationRange: ClosedRange<Double> = 0...30
@@ -117,6 +118,7 @@ public struct NotificationSettings: Codable, Equatable, Sendable {
         volume = Self.clampVolume((try? container.decodeIfPresent(Double.self, forKey: .volume)) ?? 0.7)
         quietWhenViewing = (try? container.decodeIfPresent(Bool.self, forKey: .quietWhenViewing)) ?? true
         rules = (try? container.decodeIfPresent([String: NotificationRule].self, forKey: .rules)) ?? [:]
+        telegram = (try? container.decodeIfPresent(TelegramSettings.self, forKey: .telegram)) ?? TelegramSettings()
     }
 
     public func rule(for kind: NotificationKind) -> NotificationRule {
@@ -142,8 +144,12 @@ public struct NotificationSettings: Codable, Equatable, Sendable {
     }
 
     public func alert(for trigger: AlertTrigger) -> DeckAlert? {
+        guard enabled, rule(for: trigger.kind).enabled else { return nil }
+        return rendered(trigger)
+    }
+
+    public func rendered(_ trigger: AlertTrigger) -> DeckAlert {
         let rule = rule(for: trigger.kind)
-        guard enabled, rule.enabled else { return nil }
         let title = NotificationTemplate.render(rule.title, trigger.values)
         let body = NotificationTemplate.render(rule.body, trigger.values)
         return DeckAlert(

@@ -39,6 +39,9 @@ final class DeckStore {
     private(set) var notifications: NotificationSettings
     private(set) var readState: ReadState
     var notificationEditingKind: NotificationKind = .permission
+    private(set) var telegramToken: String
+    var telegramStatus: String?
+    private(set) var telegramChats: [TelegramChat] = []
     var namePrompt: NamePrompt?
     var deletionCandidate: SessionState?
     private(set) var deleting: Set<String> = []
@@ -48,6 +51,7 @@ final class DeckStore {
     @ObservationIgnored private let appearanceStore = AppearanceStore.standard
     @ObservationIgnored private let notificationStore = NotificationStore.standard
     @ObservationIgnored private let readStore = ReadStateStore.standard
+    @ObservationIgnored private let telegramTokenStore = TelegramTokenStore.standard
     @ObservationIgnored private var detector = NotificationDetector()
     @ObservationIgnored private var closingHandled: Set<String> = []
     @ObservationIgnored private var closingQueue: [ClosingRequest] = []
@@ -61,6 +65,7 @@ final class DeckStore {
         catalog = catalogStore.load()
         appearance = appearanceStore.load()
         notifications = notificationStore.load()
+        telegramToken = telegramTokenStore.load()
         readState = readStore.load()
         tmux = Tmux.locate().map {
             Tmux(executable: $0, configFile: DeckPaths.standard.deckDirectory.appendingPathComponent("tmux.conf"))
@@ -78,6 +83,12 @@ final class DeckStore {
             self.zoom(id, steps: steps, scope: self.appearanceScope)
         }
         applyAppTheme()
+        if let tmux {
+            actions.async {
+                try? tmux.writeConfiguration()
+                tmux.run(tmux.reloadConfigurationArguments)
+            }
+        }
         DeckNotifier.shared.onOpen = { [weak self] id in self?.reveal(id) }
         for name in [NSApplication.didBecomeActiveNotification, NSWindow.didBecomeKeyNotification] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -127,23 +138,87 @@ final class DeckStore {
     }
 
     private func announce(_ triggers: [AlertTrigger]) {
-        for trigger in triggers where !isQuiet(trigger) {
-            guard let alert = notifications.alert(for: trigger) else { continue }
+        let idle = TelegramSender.idleSeconds
+        for trigger in triggers where !isSuppressed(trigger) {
+            if notifications.telegram.shouldSend(trigger.kind, idleSeconds: idle, hasToken: !telegramToken.isEmpty) {
+                sendToTelegram(notifications.rendered(trigger))
+            }
+            guard !isBeingViewed(trigger), let alert = notifications.alert(for: trigger) else { continue }
             DeckNotifier.shared.show(alert, settings: notifications)
         }
     }
 
-    private func isQuiet(_ trigger: AlertTrigger) -> Bool {
+    private func isSuppressed(_ trigger: AlertTrigger) -> Bool {
         let id = trigger.sessionId
-        if trigger.kind == .sessionEnded,
-           deleting.contains(id) || closingHandled.contains(id) || finalizing[id] != nil || closing?.sessionId == id {
-            return true
-        }
+        return trigger.kind == .sessionEnded
+            && (deleting.contains(id) || closingHandled.contains(id) || finalizing[id] != nil || closing?.sessionId == id)
+    }
+
+    private func isBeingViewed(_ trigger: AlertTrigger) -> Bool {
         guard notifications.quietWhenViewing, NSApp.isActive, MainWindow.shared.isKey else { return false }
         switch selection {
-        case let .session(selected)?: return selected == id
-        case let .subagent(parent, _)?: return parent == id
+        case let .session(selected)?: return selected == trigger.sessionId
+        case let .subagent(parent, _)?: return parent == trigger.sessionId
         default: return false
+        }
+    }
+
+    func setTelegramToken(_ token: String) {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != telegramToken else { return }
+        do {
+            try telegramTokenStore.save(trimmed)
+            telegramToken = trimmed
+            telegramChats = []
+            telegramStatus = nil
+        } catch {
+            telegramStatus = "No pude guardar el token: \(error.localizedDescription)"
+        }
+    }
+
+    func detectTelegramChat() {
+        guard !telegramToken.isEmpty else {
+            telegramStatus = "Primero pega el token del bot."
+            return
+        }
+        telegramStatus = "Buscando chats…"
+        TelegramSender.detectChats(token: telegramToken) { result in
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                switch result {
+                case let .failure(error):
+                    self.telegramStatus = error.message
+                case let .success(chats):
+                    self.telegramChats = chats
+                    if let first = chats.first {
+                        self.updateNotifications { $0.telegram.chatId = first.id }
+                        self.telegramStatus = chats.count == 1 ? "Chat encontrado: \(first.name)" : "Elegí el más reciente: \(first.name). Puedes cambiarlo abajo."
+                    } else {
+                        self.telegramStatus = "No hay mensajes. Escríbele cualquier cosa a tu bot en Telegram y vuelve a intentar."
+                    }
+                }
+            }
+        }
+    }
+
+    func sendTelegramTest() {
+        guard !telegramToken.isEmpty, notifications.telegram.isConfigured else {
+            telegramStatus = "Falta el token o el chat."
+            return
+        }
+        telegramStatus = "Enviando…"
+        sendToTelegram(notifications.preview(notificationEditingKind), reportSuccess: true)
+    }
+
+    private func sendToTelegram(_ alert: DeckAlert, reportSuccess: Bool = false) {
+        TelegramSender.send(TelegramAPI.text(for: alert), token: telegramToken, chatId: notifications.telegram.chatId) { failure in
+            DispatchQueue.main.async { [weak self] in
+                if let failure {
+                    self?.telegramStatus = "Telegram: \(failure)"
+                } else if reportSuccess {
+                    self?.telegramStatus = "Enviado. Revisa Telegram."
+                }
+            }
         }
     }
 
@@ -276,6 +351,18 @@ final class DeckStore {
 
     func move(_ sessionId: String, to group: SessionGroup?) {
         updateCatalog { $0.assign(sessionId, to: group?.id) }
+    }
+
+    var dropTargetGroupId: String?
+
+    func dropSessions(_ payloads: [String], into group: SessionGroup?) -> Bool {
+        let ids = SidebarDrop.sessionIds(in: payloads) { [self] in session(withId: $0) != nil }
+        guard !ids.isEmpty else { return false }
+        updateCatalog { catalog in
+            for id in ids { catalog.assign(id, to: group?.id) }
+        }
+        dropTargetGroupId = nil
+        return true
     }
 
     func deleteGroup(_ group: SessionGroup) {

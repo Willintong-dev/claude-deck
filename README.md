@@ -9,7 +9,7 @@ App nativa de macOS para ver y manejar todas tus sesiones de [Claude Code](https
 - **Traer a Claude Deck:** pasa a la app una sesión que abriste en otra terminal.
 - **Cerebro por sesión:** cada sesión abierta desde Claude Deck tiene su propio `BRAIN.md`, donde Claude guarda lo que vale la pena recordar. Al cerrarla puedes guardarlo como especialista con un nombre y usarlo de punto de partida en sesiones nuevas.
 - **Liberar contexto:** primero le pide a Claude que actualice el cerebro de la sesión y, cuando termina, manda `/compact`. La sesión sigue siendo la misma, con un resumen corto y el cerebro recargado. Se activa cuando Claude no está trabajando ni esperando tu permiso, y se resalta en naranja pasados los 100k tokens.
-- **Organización:** puedes renombrar sesiones, agruparlas y borrarlas por completo.
+- **Organización:** puedes renombrar sesiones, agruparlas y borrarlas por completo. Para cambiar una sesión de grupo, arrástrala a la cabecera del grupo o sobre otra sesión de ese grupo; si la sueltas en "Activas" o "Recientes", sale del grupo.
 - **Lo que te necesita, a la vista:** cada sesión tiene un avatar de color con sus iniciales y su estado.
   - Las que esperan tu permiso se resaltan en naranja.
   - Las que están trabajando muestran una barra verde y una ruedita.
@@ -20,6 +20,10 @@ App nativa de macOS para ver y manejar todas tus sesiones de [Claude Code](https
 - **Barra de estado propia:** al pie de Claude se muestra el nombre de la sesión, el modelo, el contexto usado (verde, amarillo o rojo) y la rama. Solo en las sesiones abiertas desde Claude Deck, y se desactiva en Ajustes → Apariencia. Se aplica al abrir o reanudar una sesión.
 - **Apariencia de la lista:** en Ajustes → Lista eliges la letra y sus tamaños, qué muestra la línea de detalle (carpeta, rama, contexto, hace cuánto, último mensaje), la densidad, el color de acento, los colores de estado, el fondo y el estilo de íconos.
 - **Avisos:** ventanitas flotantes cuando Claude pide permiso, termina su turno, se cierra una sesión o termina un subagente. Puedes elegir la posición, la pantalla, la duración, el sonido y el texto de cada evento.
+- **Avisos por Telegram:** los mismos avisos te llegan al teléfono cuando no estás en la Mac. Se activa en Ajustes → Notificaciones → Telegram:
+  1. Crea un bot con [@BotFather](https://t.me/BotFather) (`/newbot`) y pega su token.
+  2. Escríbele cualquier cosa a tu bot y aprieta "Detectar chat".
+  3. Elige cuántos minutos sin tocar la Mac deben pasar antes de enviar (0 = siempre) y qué eventos se envían. "Enviar prueba" manda un mensaje de ejemplo.
 - **Barra de menús:** un ícono indica cuántas sesiones esperan tu respuesta.
 
 ## Requisitos
@@ -77,11 +81,13 @@ Borrar `~/.claude-deck` elimina los nombres, grupos, cerebros guardados y ajuste
 | `~/.claude-deck/catalog.json` | Nombres, grupos y sesiones borradas |
 | `~/.claude-deck/appearance.json` | Apariencia de la terminal y de la lista |
 | `~/.claude-deck/read.json` | Hasta dónde viste cada sesión |
-| `~/.claude-deck/notifications.json` | Configuración de avisos |
+| `~/.claude-deck/notifications.json` | Configuración de avisos, también la de Telegram |
+| `~/.claude-deck/telegram-token` | Token del bot de Telegram, legible solo por tu usuario |
 | `~/.claude-deck/brains/` | Cerebros guardados y en uso |
 
 ## Problemas conocidos
 
+- **El scroll de la terminal mueve el historial de tmux:** al subir con la rueda o el trackpad entras al historial de la sesión (una línea por paso). Bajar hasta el final o apretar `q` te devuelve a Claude.
 - **`hooks.py` falla con "No such file":** `~/.claude/settings.json` todavía no existe. Abre Claude Code una vez y vuelve a correrlo.
 - **macOS no deja abrir la app:** la app se firma solo en tu Mac, sin certificado de Apple. Si la compilas tú, no debería pasar. Si te pasaron el `.app` ya compilado, ábrelo con clic derecho → Abrir.
 - **Sonido doble en los avisos:** otro hook de `settings.json` también reproduce sonidos. Quítalo o deja el sonido de Claude Deck en "Ninguno".

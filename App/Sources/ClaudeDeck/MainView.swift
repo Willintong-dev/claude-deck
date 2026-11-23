@@ -104,9 +104,21 @@ struct MainView: View {
         Section(isExpanded: expanded) {
             OutlineGroup(store.items(for: store.sessions(in: group)), children: \.children) { item in
                 row(for: item, now: now)
+                    .dropDestination(for: String.self) { payloads, _ in
+                        store.dropSessions(payloads, into: group)
+                    }
             }
         } header: {
             Label(group.name, systemImage: "folder")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color.accentColor.opacity(store.dropTargetGroupId == group.id ? 0.25 : 0)))
+                .contentShape(Rectangle())
+                .dropDestination(for: String.self) { payloads, _ in
+                    store.dropSessions(payloads, into: group)
+                } isTargeted: { targeted in
+                    store.dropTargetGroupId = targeted ? group.id : (store.dropTargetGroupId == group.id ? nil : store.dropTargetGroupId)
+                }
                 .contextMenu {
                     Button("Renombrar grupo…") { store.requestRenameGroup(group) }
                     Button("Eliminar grupo", role: .destructive) { store.deleteGroup(group) }
@@ -121,10 +133,24 @@ struct MainView: View {
     @ViewBuilder
     private func section(_ title: String, sessions: [SessionState], now: Date) -> some View {
         if !sessions.isEmpty {
-            Section(title) {
+            Section {
                 OutlineGroup(store.items(for: sessions), children: \.children) { item in
                     row(for: item, now: now)
+                        .dropDestination(for: String.self) { payloads, _ in
+                            store.dropSessions(payloads, into: nil)
+                        }
                 }
+            } header: {
+                Text(title)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.accentColor.opacity(store.dropTargetGroupId == title ? 0.25 : 0)))
+                    .contentShape(Rectangle())
+                    .dropDestination(for: String.self) { payloads, _ in
+                        store.dropSessions(payloads, into: nil)
+                    } isTargeted: { targeted in
+                        store.dropTargetGroupId = targeted ? title : (store.dropTargetGroupId == title ? nil : store.dropTargetGroupId)
+                    }
             }
         }
     }
@@ -135,6 +161,11 @@ struct MainView: View {
         case let .session(id):
             if let session = store.session(withId: id) {
                 SessionRow(session: session, title: store.title(of: session), owned: store.isOwned(id), now: now, style: store.sidebarStyle, attention: store.attention(of: session))
+                    .draggable(SidebarDrop.payload(for: id)) {
+                        Label(store.title(of: session), systemImage: "terminal")
+                            .padding(6)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                    }
                     .contextMenu {
                         Button("Renombrar…") { store.requestRename(session) }
                         Menu("Mover a grupo") {
